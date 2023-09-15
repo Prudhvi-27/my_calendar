@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(MaterialApp(
@@ -7,9 +8,9 @@ void main() {
     home: MyApp(),
     theme: ThemeData(
       appBarTheme: AppBarTheme(
-        color: Color.fromARGB(255, 73, 22, 92), // Set the app bar background color
+        color: Color.fromARGB(255, 73, 22, 92),
       ),
-      primarySwatch: Colors.purple, // Set the primary color for the calendar
+      primarySwatch: Colors.purple,
     ),
   ));
 }
@@ -23,7 +24,36 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   DateTime today = DateTime.now();
-  Map<DateTime, List<dynamic>> events = {};
+  Map<DateTime, List<String>> events = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEventsFromStorage();
+  }
+
+  void _loadEventsFromStorage() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      events.clear(); // Clear the existing events map
+      for (String key in prefs.getKeys()) {
+        DateTime day = DateTime.parse(key);
+        List<String>? storedEvents = prefs.getStringList(key);
+        if (storedEvents != null) {
+          events[day] = storedEvents;
+        }
+      }
+    });
+  }
+
+  void _saveEventsToStorage() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    for (DateTime day in events.keys) {
+      await prefs.setStringList(day.toString(), events[day] ?? []);
+    }
+  }
 
   void _onDaySelected(DateTime day, DateTime focusedDay) {
     setState(() {
@@ -31,14 +61,18 @@ class _MyAppState extends State<MyApp> {
     });
 
     events[day] = events[day] ?? [];
+
+    // Call _saveEventsToStorage to save all events
+    _saveEventsToStorage();
   }
 
-  void _addEventDialog(BuildContext context) {
+  void _addEventDialog(BuildContext context) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String eventText = '';
+
     showDialog(
       context: context,
       builder: (context) {
-        String eventText = '';
-
         return AlertDialog(
           title: Text('Add Event'),
           content: TextField(
@@ -48,13 +82,21 @@ class _MyAppState extends State<MyApp> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  if (eventText.isNotEmpty) {
+              onPressed: () async {
+                if (eventText.isNotEmpty) {
+                  setState(() {
                     events[today]?.add(eventText);
-                  }
-                  Navigator.pop(context);
-                });
+                  });
+
+                  await prefs.setStringList(
+                    today.toString(),
+                    events[today] ?? [],
+                  );
+
+                  // Call _saveEventsToStorage to save all events
+                  _saveEventsToStorage();
+                }
+                Navigator.pop(context);
               },
               child: Text('Add'),
             ),
@@ -71,7 +113,7 @@ class _MyAppState extends State<MyApp> {
         title: Text(
           "My Calendar",
           style: TextStyle(
-            color: Colors.white, // Set the app bar text color
+            color: Colors.white,
           ),
         ),
       ),
@@ -81,7 +123,7 @@ class _MyAppState extends State<MyApp> {
         child: FloatingActionButton(
           onPressed: () => _addEventDialog(context),
           child: Icon(Icons.add),
-          backgroundColor: Color.fromARGB(255, 73, 22, 92), // Set the FloatingActionButton color
+          backgroundColor: Color.fromARGB(255, 73, 22, 92),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -124,10 +166,19 @@ class _MyAppState extends State<MyApp> {
                   title: Text(event.toString()),
                   trailing: IconButton(
                     icon: Icon(Icons.delete),
-                    onPressed: () {
+                    onPressed: () async {
                       setState(() {
                         events[today]!.remove(event);
                       });
+
+                      SharedPreferences prefs =
+                          await SharedPreferences.getInstance();
+                      await prefs.setStringList(
+                        today.toString(),
+                        events[today] ?? [],
+                      );
+
+                      _saveEventsToStorage();
                     },
                   ),
                 );
